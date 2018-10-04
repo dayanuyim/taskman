@@ -10,5 +10,9 @@
         "host": "",
         "port": 61613,
         "queue": "csfResult"
+    },
+    "log": {
+        "format": "[:date[Asia/Taipei]] :remote-addr - :remote-user ':method :url HTTP/:http-version' :status :res[content-length] ms",
+        "dateFormat": "YYYY-MM-DD HH:mm:ss.SSS"
     }
 }

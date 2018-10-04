@@ -2,6 +2,7 @@
 'use strict';
 
 const express = require('express');
+const moment = require('moment-timezone');
 const morgan = require('morgan');
 const bodyParser = require('body-parser');
 const multer = require('multer');
@@ -18,8 +19,13 @@ nconf.argv()
     .defaults({ conf: `${__dirname}/config.json` })
     .file(nconf.get('conf'));
 
+// SET morgan date local
+morgan.token('date', (req, res, tz) => {
+    return moment().tz(tz).format(nconf.get('log:dateFormat'));
+});
+
 const app = express();
-app.use(morgan('dev'));
+app.use(morgan(nconf.get('log:format')));
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
