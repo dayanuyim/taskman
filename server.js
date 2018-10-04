@@ -12,7 +12,9 @@ const exec = require('child_process').exec;
 const path = require('path');
 const nconf = require('nconf');
 const pkg = require('./package.json');
-const yellow = require('colors/safe').yellow;
+const colors = require('colors/safe');
+
+const yellow = colors.yellow;
 
 nconf.argv()
     .env('__')
@@ -25,7 +27,7 @@ morgan.token('date', (req, res, tz) => {
 });
 
 const app = express();
-app.use(morgan(nconf.get('log:format')));
+app.use(morgan(colors.green(nconf.get('log:format'))));
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
