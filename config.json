@@ -1,0 +1,14 @@
+{
+    "host": "",
+    "port": 20180,
+    "task": {
+        "dir": "tasks",
+		"cmd": "echo The sample path is \"${samplePath}\"",
+        "reportSuffix": ".report.txt"
+    },
+    "amq": {
+        "host": "",
+        "port": 61613,
+        "queue": "csfResult"
+    }
+}
