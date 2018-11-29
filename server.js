@@ -15,6 +15,7 @@ const pkg = require('./package.json');
 const colors = require('colors/safe');
 
 const yellow = colors.yellow;
+const red = colors.red;
 
 nconf.argv()
     .env('__')
@@ -48,7 +49,8 @@ function amqSendMessage(host, port, queue, msg)
     stomp.connect(sessionId => {
         console.log(`${yellow('AMQ')} ${host}:${port}/${queue} connected`);
         stomp.publish('/queue/' + queue, msg);
-    });
+    },
+    err => console.log(`${red('ERROR')} ${err}`));
 };
 
 function genResult(err, hostname, taskId, reportPath)
@@ -110,7 +112,7 @@ app.post('/csf/task/upload', upload.single('sampleFile'), (req, res) => {
     // RENAME file by taskId.
     // **NOT** config 'multer' by 'storeage' to do the rename, because 'taskId' is not ready at that moment.
     const newSamplePath = path.join(nconf.get('task:dir'),
-        req.body.taskId + path.extname(req.file.originalname));
+                            req.body.taskId + path.extname(req.file.originalname));
 
     renameSamplePath(req, newSamplePath, () => {
         // DO command
