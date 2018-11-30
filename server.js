@@ -14,8 +14,8 @@ const nconf = require('nconf');
 const pkg = require('./package.json');
 const colors = require('colors/safe');
 
-const yellow = colors.yellow;
-const red = colors.red;
+const logInfo = (tag, msg) => console.log(`${colors.yellow(tag)} ${msg}`);
+const logError = (tag, msg) => console.log(`${colors.red(tag)} ${msg}`);
 
 nconf.argv()
     .env('__')
@@ -47,10 +47,10 @@ function amqSendMessage(host, port, queue, msg)
 {
     const stomp = new Stomp(host, port);
     stomp.connect(sessionId => {
-        console.log(`${yellow('AMQ')} ${host}:${port}/${queue} connected`);
+        logInfo('AMQ', `${host}:${port}/${queue} connected`);
         stomp.publish('/queue/' + queue, msg);
     },
-    err => console.log(`${red('ERROR')} ${err}`));
+    err => logError('ERROR', err));
 };
 
 function genResult(err, hostname, taskId, reportPath)
@@ -62,7 +62,7 @@ function genResult(err, hostname, taskId, reportPath)
         link: err? '': `http:\/\/${hostname}:${nconf.get('port')}/csf/task/report/${path.basename(reportPath)}`
     };
 
-    console.log(`${yellow('RESULT')}  ${JSON.stringify(result, null, 2)}`);
+    logInfo('RESULT', `${JSON.stringify(result, null, 2)}`);
     return result;
 }
 
@@ -71,7 +71,7 @@ function execCmd(samplePath, reportPath, execCB)
     const genCmd = (samplePath) => eval(`\`${nconf.get('task:cmd')}\``);
 
     const cmd = `${genCmd(samplePath)} > "${reportPath}"`;
-    console.log(`${yellow('CMD')} ${cmd}`);
+    logInfo('CMD', cmd);
 
     exec(cmd, (err, stdout, stderr) => execCB(err, stdout, stderr));
 }
@@ -82,7 +82,7 @@ function renameSamplePath(req, newSamplePath, renameCB)
         if(err) throw err;
         req.file.path = newSamplePath;
         req.file.filename = path.basename(newSamplePath);
-        console.log(`${yellow('SAMPLE')} ${JSON.stringify(req.file, null, 2)}`);
+        logInfo('SAMPLE', `${JSON.stringify(req.file, null, 2)}`);
 
         renameCB();
     });
@@ -98,19 +98,13 @@ app.get('/csf/task/report/:reportName', (req, res) => {
     const file = path.join(__dirname,
         nconf.get('task:dir'),
         req.params.reportName);
-    console.log(`${yellow('DL')} ${file}`);
+    logInfo('DL', file);
     res.sendFile(file);
 });
 
-app.post('/csf/task/upload', upload.single('sampleFile'), (req, res) => {
-    console.log('');  //split output
-    res.status(200).json({
-        status: "SUCCESS",
-        message: "",
-    });
-
+const runTask = req => {
     // RENAME file by taskId.
-    // **NOT** config 'multer' by 'storeage' to do the rename, because 'taskId' is not ready at that moment.
+    // **NOT** config 'multer' by 'storeage' to do the rename, because 'taskId' may be not ready at that moment.
     const newSamplePath = path.join(nconf.get('task:dir'),
                             req.body.taskId + path.extname(req.file.originalname));
 
@@ -130,7 +124,32 @@ app.post('/csf/task/upload', upload.single('sampleFile'), (req, res) => {
             amqSendMessage(amqHost, amqPort, queue, JSON.stringify(result));
         });
     });
+};
+
+app.post('/csf/task/upload', upload.single('sampleFile'), (req, res) => {
+    console.log('');  //split output
+
+    if(!req.body.taskId){
+        res.status(400).json({
+            status: "FAIL",
+            message: "No taskId",
+        });
+    }
+    else if(!req.file){
+        res.status(400).json({
+            status: "FAIL",
+            message: "No sampleFile",
+        });
+    }
+    else{
+        res.status(200).json({
+            status: "SUCCESS",
+            message: "",
+        });
+
+        runTask(req);
+    }
 });
 
 const port = nconf.get('port');
-app.listen(port, () => console.log(`${yellow('SERV')} listening at ${port}`));
+app.listen(port, () => logInfo('SERV', `listening at ${port}`));
