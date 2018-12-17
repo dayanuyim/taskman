@@ -53,38 +53,45 @@ function amqSendMessage(host, port, queue, msg)
     err => logError('ERROR', err));
 };
 
-function genResult(err, hostname, taskId, reportPath)
+function genResult(taskId, errmsg, link)
 {
     const result = {
         taskId,
-        status: err? "FAIL": "SUCCESS",
-        message: err? JSON.stringify(err): '',
-        link: err? '': `http:\/\/${hostname}:${nconf.get('port')}/csf/task/report/${path.basename(reportPath)}`
+        status: errmsg? "FAIL": "SUCCESS",
+        message: errmsg? JSON.stringify(errmsg): '',
+        link: errmsg? '': link
     };
 
     logInfo('RESULT', `${JSON.stringify(result, null, 2)}`);
     return result;
 }
 
-function execCmd(samplePath, reportPath, execCB)
+function execCmd(samplePath, reportPath, callback)
 {
     const genCmd = (samplePath) => eval(`\`${nconf.get('task:cmd')}\``);
-
     const cmd = `${genCmd(samplePath)} > "${reportPath}"`;
     logInfo('CMD', cmd);
 
-    exec(cmd, (err, stdout, stderr) => execCB(err, stdout, stderr));
+    fs.mkdir(path.dirname(reportPath), { recursive: true }, err => { 
+
+        if (err && err.code != 'EEXIST')
+            return callback(err, null, null);
+
+        exec(cmd, (err, stdout, stderr) => callback(err, stdout, stderr));
+    });
 }
 
-function renameSamplePath(req, newSamplePath, renameCB)
+function renameReqSample(req, newSamplePath, callback)
 {
     fs.rename(req.file.path, newSamplePath, (err) => {
-        if(err) throw err;
+        if(err)
+            return callback(err);
+
         req.file.path = newSamplePath;
         req.file.filename = path.basename(newSamplePath);
         logInfo('SAMPLE', `${JSON.stringify(req.file, null, 2)}`);
 
-        renameCB();
+        callback(null);
     });
 }
 
@@ -96,32 +103,42 @@ app.get('/csf/task/status', (req, res) => {
 app.get('/csf/task/report/:reportName', (req, res) => {
     console.log('');  //split output
     const file = path.join(__dirname,
-        nconf.get('task:dir'),
+        nconf.get('report:dir'),
         req.params.reportName);
     logInfo('DL', file);
     res.sendFile(file);
 });
 
 const runTask = req => {
+
+    const result = (errmsg, reportName) => {
+        const hostname = nconf.get('host') || req.hostname;
+        const port = nconf.get('port');
+        const taskId = req.body.taskId;
+        const link = `http:\/\/${hostname}:${port}/csf/task/report/${reportName}`
+        genResult(taskId, errmsg, link);
+    };
+
+    const sendMsg = (msg) => {
+        const amqHost = nconf.get('amq:host') || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        const amqPort = nconf.get('amq:port') || 61613;
+        const queue = req.body.amqName || nconf.get('amq:queue');
+        amqSendMessage(amqHost, amqPort, queue, msg);
+    };
+
     // RENAME file by taskId.
     // **NOT** config 'multer' by 'storeage' to do the rename, because 'taskId' may be not ready at that moment.
-    const newSamplePath = path.join(nconf.get('task:dir'),
-                            req.body.taskId + path.extname(req.file.originalname));
+    const newSamplePath = path.join(nconf.get('task:dir'), req.body.taskId + path.extname(req.file.originalname));
 
-    renameSamplePath(req, newSamplePath, () => {
-        // DO command
-        const reportPath = req.file.path + nconf.get('task:reportSuffix');
+    renameReqSample(req, newSamplePath, (err) => {
+        if(err)
+            return sendMsg(JSON.stringify(result(err, null)));
+
+        const reportName = req.body.taskId + nconf.get('report:suffix');
+        const reportPath = path.join(nconf.get('report:dir'), reportName);
 
         execCmd(req.file.path, reportPath, (err, stdout, stderr) => {
-            //GEN result
-            const hostname = nconf.get('host') || req.hostname;
-            const result = genResult(err, hostname, req.body.taskId, reportPath);
-
-            //send amq result
-            const amqHost = nconf.get('amq:host') || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-            const amqPort = nconf.get('amq:port');
-            const queue = req.body.amqName || nconf.get('amq:queue');
-            amqSendMessage(amqHost, amqPort, queue, JSON.stringify(result));
+            return sendMsg(JSON.stringify(result(err, reportName)));
         });
     });
 };

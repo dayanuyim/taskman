@@ -3,8 +3,11 @@
     "port": 20180,
     "task": {
         "dir": "tasks",
-		"cmd": "echo The sample path is \"${samplePath}\"",
-        "reportSuffix": ".report.txt"
+		"cmd": "echo Run the task for Sample '${samplePath}'"
+    },
+    "report": {
+        "dir": "reports",
+        "suffix": ".report.txt"
     },
     "amq": {
         "host": "",
