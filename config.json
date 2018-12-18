@@ -3,7 +3,7 @@
     "port": 20180,
     "task": {
         "dir": "tasks",
-		"cmd": "echo Run the task for Sample '${samplePath}'"
+		"cmd": "echo Run the task with Sample '${samplePath}'"
     },
     "report": {
         "dir": "reports",
