@@ -2,8 +2,6 @@
 'use strict';
 
 const express = require('express');
-const moment = require('moment-timezone');
-const morgan = require('morgan');
 const bodyParser = require('body-parser');
 const multer = require('multer');
 const fs = require('fs');
@@ -11,7 +9,6 @@ const exec = require('child_process').exec;
 const path = require('path');
 const nconf = require('nconf');
 const pkg = require('./package.json');
-const colors = require('colors/safe');
 const utils = require('./utils');
 
 const { logDebug, logError } = utils;
@@ -22,12 +19,19 @@ nconf.argv()
     .file(nconf.get('conf'));
 
 // SET morgan date local
-morgan.token('date', (req, res, tz) => {
-    return moment().tz(tz).format(nconf.get('log:dateFormat'));
-});
+const initMorgan = (log) => {
+    const morgan = require('morgan');
+    const moment = require('moment-timezone');
+    morgan.token('date', (req, res, tz) => {
+        return moment().tz(tz).format(log.dateFormat);
+    });
+
+    const {red, green, yellow} = require('colors/safe');
+    return morgan(eval('`' + log.format + '`'));
+};
 
 const app = express();
-app.use(morgan(colors.green(nconf.get('log:format'))));
+app.use(initMorgan(nconf.get('log')));
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
@@ -42,32 +46,6 @@ const upload = multer({ storage: multer.diskStorage({
 });
 */
 
-function execCmd(samplePath, reportPath, callback)
-{
-    const genCmd = (samplePath) => eval(`\`${nconf.get('task:cmd')}\``);
-    const cmd = `${genCmd(samplePath)} > "${reportPath}"`;
-    logDebug('CMD', cmd);
-
-    utils.mkdir(path.dirname(reportPath),  err => {
-        if(err)
-            return callback(err, null, null);
-        exec(cmd, (err, stdout, stderr) => callback(err, stdout, stderr));
-    });
-}
-
-function renameReqSample(req, newSamplePath, callback)
-{
-    fs.rename(req.file.path, newSamplePath, (err) => {
-        if(err)
-            return callback(err);
-
-        req.file.path = newSamplePath;
-        req.file.filename = path.basename(newSamplePath);
-        logDebug('SAMPLE', `${JSON.stringify(req.file, null, 2)}`);
-        callback(null);
-    });
-}
-
 app.get('/csf/task/status', (req, res) => {
     console.log('');  //split output
     res.status(200).json({status: "hello"});
@@ -80,6 +58,31 @@ app.get('/csf/task/report/:reportName', (req, res) => {
         req.params.reportName);
     logDebug('DL', file);
     res.sendFile(file);
+});
+
+app.post('/csf/task/upload', upload.single('sampleFile'), (req, res) => {
+    console.log('');  //split output
+
+    if(!req.body.taskId){
+        res.status(400).json({
+            status: "FAIL",
+            message: "No taskId",
+        });
+    }
+    else if(!req.file){
+        res.status(400).json({
+            status: "FAIL",
+            message: "No sampleFile",
+        });
+    }
+    else{
+        res.status(200).json({
+            status: "SUCCESS",
+            message: "",
+        });
+
+        runTask(req);
+    }
 });
 
 const runTask = req => {
@@ -116,30 +119,31 @@ const runTask = req => {
     });
 };
 
-app.post('/csf/task/upload', upload.single('sampleFile'), (req, res) => {
-    console.log('');  //split output
+function renameReqSample(req, newSamplePath, callback)
+{
+    fs.rename(req.file.path, newSamplePath, (err) => {
+        if(err)
+            return callback(err);
 
-    if(!req.body.taskId){
-        res.status(400).json({
-            status: "FAIL",
-            message: "No taskId",
-        });
-    }
-    else if(!req.file){
-        res.status(400).json({
-            status: "FAIL",
-            message: "No sampleFile",
-        });
-    }
-    else{
-        res.status(200).json({
-            status: "SUCCESS",
-            message: "",
-        });
+        req.file.path = newSamplePath;
+        req.file.filename = path.basename(newSamplePath);
+        logDebug('SAMPLE', `${JSON.stringify(req.file, null, 2)}`);
+        callback(null);
+    });
+}
 
-        runTask(req);
-    }
-});
+function execCmd(samplePath, reportPath, callback)
+{
+    const genCmd = (samplePath) => eval(`\`${nconf.get('task:cmd')}\``);
+    const cmd = `${genCmd(samplePath)} > "${reportPath}"`;
+    logDebug('CMD', cmd);
+
+    utils.mkdir(path.dirname(reportPath),  err => {
+        if(err)
+            return callback(err, null, null);
+        exec(cmd, (err, stdout, stderr) => callback(err, stdout, stderr));
+    });
+}
 
 const port = nconf.get('port');
 app.listen(port, () => logDebug('SERV', `listening at ${port}`));
