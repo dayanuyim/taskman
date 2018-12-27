@@ -5,6 +5,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const multer = require('multer');
 const fs = require('fs');
+const mkdirp = require('mkdirp');
 const exec = require('child_process').exec;
 const path = require('path');
 const nconf = require('nconf');
@@ -92,14 +93,14 @@ const runTask = req => {
         const port = nconf.get('port');
         const taskId = req.body.taskId;
         const link = `http:\/\/${hostname}:${port}/csf/task/report/${reportName}`
-        utils.genUtestResult(taskId, errmsg, link);
+        return utils.genUtestResult(taskId, errmsg, link);
     };
 
-    const sendMsg = (msg) => {
+    const sendmsg = (msg) => {
         const amqHost = nconf.get('amq:host') || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
         const amqPort = nconf.get('amq:port') || 61613;
         const queue = req.body.amqName || nconf.get('amq:queue');
-        utils.sendAmqMessage(amqHost, amqPort, queue, msg);
+        utils.sendAmqMessage(amqHost, amqPort, queue, msg, (err) => { if(err) return logError('ERROR', err);});
     };
 
     // RENAME file by taskId.
@@ -108,13 +109,13 @@ const runTask = req => {
 
     renameReqSample(req, newSamplePath, (err) => {
         if(err)
-            return sendMsg(JSON.stringify(result(err, null)));
+            return sendmsg(JSON.stringify(result(err, null)));
 
         const reportName = req.body.taskId + nconf.get('report:suffix');
         const reportPath = path.join(nconf.get('report:dir'), reportName);
 
         execCmd(req.file.path, reportPath, (err, stdout, stderr) => {
-            return sendMsg(JSON.stringify(result(err, reportName)));
+            return sendmsg(JSON.stringify(result(err, reportName)));
         });
     });
 };
@@ -132,16 +133,17 @@ function renameReqSample(req, newSamplePath, callback)
     });
 }
 
+// @callback = function(err, stdout, stderr)
 function execCmd(samplePath, reportPath, callback)
 {
     const genCmd = (samplePath) => eval(`\`${nconf.get('task:cmd')}\``);
     const cmd = `${genCmd(samplePath)} > "${reportPath}"`;
     logDebug('CMD', cmd);
 
-    utils.mkdir(path.dirname(reportPath),  err => {
+    mkdirp(path.dirname(reportPath),  err => {
         if(err)
-            return callback(err, null, null);
-        exec(cmd, (err, stdout, stderr) => callback(err, stdout, stderr));
+            return callback(err);
+        exec(cmd, callback);
     });
 }
 

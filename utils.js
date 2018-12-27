@@ -1,7 +1,5 @@
 'use strict';
 
-const fs = require('fs');
-const Stomp = require('stomp-client');
 const colors = require('colors/safe');
 
 const logDebug = (tag, msg) => console.log(`${colors.blue(tag)} ${msg}`);
@@ -14,26 +12,17 @@ module.exports.logInfo = logInfo;
 module.exports.logWarn = logWarn;
 module.exports.logError = logError;
 
-//mkdir -p
-module.exports.mkdir = (path, cb) => {
-    fs.mkdir(path, { recursive: true }, err => { 
-        if (err && err.code != 'EEXIST')
-            return cb(err);
-
-        cb(null);
-    });
-};
-
-module.exports.sendAmqMessage = function(host, port, queue, msg)
+module.exports.sendAmqMessage = function(host, port, queue, msg, callback)
 {
+    const Stomp = require('stomp-client');
     //const client = new Stomp(host, port, "", "", '1.0', null, {retries: 3, delay: 100});
     const client = new Stomp(host, port);
     client.connect(sessionId => {
         logDebug('AMQ', `${host}:${port}/${queue} connected`);
         client.publish('/queue/' + queue, msg);
-        //client.disconnect();
+        client.disconnect(callback);
     },
-    err => logError('ERROR', err));
+    callback);
 };
 
 module.exports.genUtestResult = function(taskId, errmsg, link)
