@@ -33,7 +33,5 @@ module.exports.genUtestResult = function(taskId, errmsg, link)
         message: errmsg? JSON.stringify(errmsg): '',
         link: errmsg? '': link
     };
-
-    logDebug('RESULT', `${JSON.stringify(result, null, 2)}`);
     return result;
 }

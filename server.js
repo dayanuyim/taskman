@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 'use strict';
 
+const {promisify} = require('util');
 const express = require('express');
 const bodyParser = require('body-parser');
 const multer = require('multer');
 const fs = require('fs');
-const mkdirp = require('mkdirp');
-const exec = require('child_process').exec;
+const rename = promisify(fs.rename);
+const mkdirp = promisify(require('mkdirp'));
+const exec = promisify(require('child_process').exec);
 const path = require('path');
 const nconf = require('nconf');
 const pkg = require('./package.json');
@@ -86,65 +88,55 @@ app.post('/csf/task/upload', upload.single('sampleFile'), (req, res) => {
     }
 });
 
-const runTask = req => {
+const runTask = (req) => {
 
     const result = (errmsg, reportName) => {
         const hostname = nconf.get('host') || req.hostname;
         const port = nconf.get('port');
         const taskId = req.body.taskId;
         const link = `http:\/\/${hostname}:${port}/csf/task/report/${reportName}`
-        return utils.genUtestResult(taskId, errmsg, link);
+        const rst =  utils.genUtestResult(taskId, errmsg, link);
+        logDebug('RESULT', `${JSON.stringify(rst, null, 2)}`);
+        return rst;
     };
 
     const sendmsg = (msg) => {
         const amqHost = nconf.get('amq:host') || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
         const amqPort = nconf.get('amq:port') || 61613;
         const queue = req.body.amqName || nconf.get('amq:queue');
-        utils.sendAmqMessage(amqHost, amqPort, queue, msg, (err) => { if(err) return logError('ERROR', err);});
+        utils.sendAmqMessage(amqHost, amqPort, queue, msg, (err) => {
+            if(err) return logError('ERROR', err);
+        });
     };
+
+    const genCmd = (samplePath, reportPath) => {
+        const cmd_ = eval('`' + nconf.get('task:cmd') + '`');
+        const cmd = `${cmd_} > "${reportPath}"`;
+        logDebug('CMD', cmd);
+        return cmd;
+    };
+
+    const reportName = req.body.taskId + nconf.get('report:suffix');
+    const reportPath = path.join(nconf.get('report:dir'), reportName);
+    const samplePath = path.join(nconf.get('task:dir'), req.body.taskId + path.extname(req.file.originalname));
 
     // RENAME file by taskId.
     // **NOT** config 'multer' by 'storeage' to do the rename, because 'taskId' may be not ready at that moment.
-    const newSamplePath = path.join(nconf.get('task:dir'), req.body.taskId + path.extname(req.file.originalname));
-
-    renameReqSample(req, newSamplePath, (err) => {
-        if(err)
-            return sendmsg(JSON.stringify(result(err, null)));
-
-        const reportName = req.body.taskId + nconf.get('report:suffix');
-        const reportPath = path.join(nconf.get('report:dir'), reportName);
-
-        execCmd(req.file.path, reportPath, (err, stdout, stderr) => {
-            return sendmsg(JSON.stringify(result(err, reportName)));
+    rename(req.file.path, samplePath)
+        .then(()=> resetReqFile(req.file, samplePath))
+        .then(()=> mkdirp(path.dirname(reportPath)))
+        .then(()=> exec(genCmd(samplePath, reportPath)))
+        .then(()=> sendmsg(JSON.stringify(result(null, reportName))))
+        .catch(err=>{
+            logError('ERROR', err);
+            sendmsg(JSON.stringify(result(err, null)));
         });
-    });
 };
 
-function renameReqSample(req, newSamplePath, callback)
-{
-    fs.rename(req.file.path, newSamplePath, (err) => {
-        if(err)
-            return callback(err);
-
-        req.file.path = newSamplePath;
-        req.file.filename = path.basename(newSamplePath);
-        logDebug('SAMPLE', `${JSON.stringify(req.file, null, 2)}`);
-        callback(null);
-    });
-}
-
-// @callback = function(err, stdout, stderr)
-function execCmd(samplePath, reportPath, callback)
-{
-    const genCmd = (samplePath) => eval(`\`${nconf.get('task:cmd')}\``);
-    const cmd = `${genCmd(samplePath)} > "${reportPath}"`;
-    logDebug('CMD', cmd);
-
-    mkdirp(path.dirname(reportPath),  err => {
-        if(err)
-            return callback(err);
-        exec(cmd, callback);
-    });
+function resetReqFile(fileobj, newpath){
+    fileobj.path = newpath;
+    fileobj.filename = path.basename(newpath);
+    logDebug('SAMPLE', `${JSON.stringify(fileobj, null, 2)}`);
 }
 
 const port = nconf.get('port');
