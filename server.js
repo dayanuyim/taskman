@@ -88,7 +88,7 @@ app.post('/csf/task/upload', upload.single('sampleFile'), (req, res) => {
     }
 });
 
-const runTask = (req) => {
+const runTask = async (req) => {
 
     const result = (errmsg, reportName) => {
         const hostname = nconf.get('host') || req.hostname;
@@ -120,17 +120,20 @@ const runTask = (req) => {
     const reportPath = path.join(nconf.get('report:dir'), reportName);
     const samplePath = path.join(nconf.get('task:dir'), req.body.taskId + path.extname(req.file.originalname));
 
-    // RENAME file by taskId.
-    // **NOT** config 'multer' by 'storeage' to do the rename, because 'taskId' may be not ready at that moment.
-    rename(req.file.path, samplePath)
-        .then(()=> resetReqFile(req.file, samplePath))
-        .then(()=> mkdirp(path.dirname(reportPath)))
-        .then(()=> exec(genCmd(samplePath, reportPath)))
-        .then(()=> sendmsg(JSON.stringify(result(null, reportName))))
-        .catch(err=>{
-            logError('ERROR', err);
-            sendmsg(JSON.stringify(result(err, null)));
-        });
+    try{
+        // RENAME file by taskId.
+        // **NOT** config 'multer' by 'storeage' to do the rename, because 'taskId' may be not ready at that moment.
+        await rename(req.file.path, samplePath);
+        resetReqFile(req.file, samplePath); //just for data coherence
+
+        await mkdirp(path.dirname(reportPath));
+        await exec(genCmd(samplePath, reportPath));
+        sendmsg(JSON.stringify(result(null, reportName)));
+    }
+    catch(err){
+        logError('ERROR', err);
+        sendmsg(JSON.stringify(result(err, null)));
+    }
 };
 
 function resetReqFile(fileobj, newpath){
