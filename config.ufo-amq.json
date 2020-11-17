@@ -2,13 +2,13 @@
     "host": "",
     "port": 4128,
     "task": {
-        "path": "/tasks",
-        "cmd": "echo sample file is '${sampleFile}' > '${taskDir}.log' && ./gen-cmd-stdout-template.sh '${taskId}'",
+        "path": "/csf/task/upload",
+        "cmd": "dufo '${sampleFile}' '${taskDir}' --delete-sample 2> '${taskDir}.log'",
         "dir": "tasks",
         "incomingDir": "tasks-incoming"
     },
     "report": {
-        "method": "local",
+        "method": "amq",
         "api": {
             "host": "http://localhost/ufo/mq.php"
 
