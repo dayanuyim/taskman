@@ -1,0 +1,18 @@
+{
+  "a_data": {
+    "chtDesc": "證據包下載",
+    "type": "link",
+    "value": "result.7z",
+    "desc": "Analyse Result Download"
+  },
+  "link": "index.json",
+  "message": "",
+  "a_data2": {
+    "chtDesc": "JSON報表下載",
+    "type": "link",
+    "value": "index.json",
+    "desc": "JSON Result Download"
+  },
+  "taskId": "0015fb36f1dd343f",
+  "status": "SUCCESS"
+}

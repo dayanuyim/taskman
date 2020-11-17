@@ -7,24 +7,50 @@ const bodyParser = require('body-parser');
 const multer = require('multer');
 const fs = require('fs');
 const rename = promisify(fs.rename);
-const mkdirp = promisify(require('mkdirp'));
 const exec = promisify(require('child_process').exec);
 const path = require('path');
 const nconf = require('nconf');
+const axios = require('axios');
+const colors = require('colors/safe');
+const moment = require('moment-timezone');
 const pkg = require('./package.json');
 const utils = require('./utils');
 
-const { logDebug, logError } = utils;
+function pretty(obj){ return JSON.stringify(obj, null, 2);}
 
 nconf.argv()
     .env('__')
     .defaults({ conf: `${__dirname}/config.json` })
     .file(nconf.get('conf'));
 
+const log = function(){
+    const fmt = nconf.get('log').dateFormat;
+    const tz = moment.tz.guess();
+    const now = () => {
+        return moment().tz(tz).format(fmt);
+    }
+
+    //const {blue: b, green: g, yellow: y, red: r} = colors;
+    return {
+        debug: (tag, msg) => console.log(`[${now()}] ${colors.blue(tag)} ${msg}`),
+        info:  (tag, msg) => console.log(`[${now()}] ${colors.green(tag)} ${msg}`),
+        warn:  (tag, msg) => console.log(`[${now()}] ${colors.yellow(tag)} ${msg}`),
+        error: (tag, msg) => console.log(`[${now()}] ${colors.red(tag)} ${msg}`),
+    };
+}();
+
+function getTaskLogger(taskId){
+    return {
+        debug: (tag, msg) => log.debug(tag, `[${taskId}] ${msg}`),
+        info:  (tag, msg) =>  log.info(tag, `[${taskId}] ${msg}`),
+        warn:  (tag, msg) =>  log.warn(tag, `[${taskId}] ${msg}`),
+        error: (tag, msg) => log.error(tag, `[${taskId}] ${msg}`),
+    }
+}
+
 // SET morgan date local
 const initMorgan = (log) => {
     const morgan = require('morgan');
-    const moment = require('moment-timezone');
     morgan.token('date', (req, res, tz) => {
         return moment().tz(tz).format(log.dateFormat);
     });
@@ -38,7 +64,7 @@ app.use(initMorgan(nconf.get('log')));
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
-const upload = multer({ dest: nconf.get('task:dir')});
+const upload = multer({ dest: nconf.get('task:incomingDir')});
 /* DONT DO THIS BECAUSE THE 'taskId' IS NOT READY.
 const upload = multer({ storage: multer.diskStorage({
     destination: nconf.get('task:dir'),
@@ -47,25 +73,32 @@ const upload = multer({ storage: multer.diskStorage({
       }
     })
 });
-*/
+//*/
 
-app.get('/csf/task/status', (req, res) => {
-    console.log('');  //split output
+const taskpath = nconf.get('task:path');
+
+/*
+app.get(`${taskpath}/status`, (req, res) => {
     res.status(200).json({status: "hello"});
 });
+*/
 
-app.get('/csf/task/report/:reportName', (req, res) => {
-    console.log('');  //split output
+app.get(`${taskpath}/:id/*`, (req, res) => {
+    const log = getTaskLogger(req.params.id);
+
     const file = path.join(__dirname,
-        nconf.get('report:dir'),
-        req.params.reportName);
-    logDebug('DL', file);
-    res.sendFile(file);
+        nconf.get('task:dir'),
+        req.params.id,
+        req.params['0']);
+    log.debug('DL', file);
+
+    if(!fs.existsSync(file))
+        res.status(404).end();
+    else
+        res.sendFile(file, {dotfiles: 'allow'});
 });
 
-app.post('/csf/task/upload', upload.single('sampleFile'), (req, res) => {
-    console.log('');  //split output
-
+app.post(taskpath, upload.single('sampleFile'), (req, res) => {
     if(!req.body.taskId){
         res.status(400).json({
             status: "FAIL",
@@ -88,59 +121,91 @@ app.post('/csf/task/upload', upload.single('sampleFile'), (req, res) => {
     }
 });
 
-const runTask = async (req) => {
+const port = nconf.get('port');
+app.listen(port, () => log.debug('SERV', `listening at ${port}`));
 
-    const result = (errmsg, reportName) => {
-        const hostname = nconf.get('host') || req.hostname;
-        const port = nconf.get('port');
-        const taskId = req.body.taskId;
-        const link = `http:\/\/${hostname}:${port}/csf/task/report/${reportName}`
-        const rst =  utils.genUtestResult(taskId, errmsg, link);
-        logDebug('RESULT', `${JSON.stringify(rst, null, 2)}`);
-        return rst;
-    };
+class AmqReporter {
+    constructor(req, log){
+        this.log = log;
+        this.amqHost = nconf.get('report:amq:host') || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        this.amqPort = nconf.get('report:amq:port') || 61613;
+        this.queue = req.body.amqName || nconf.get('report:amq:queue');
+    }
 
-    const sendmsg = (msg) => {
-        const amqHost = nconf.get('amq:host') || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-        const amqPort = nconf.get('amq:port') || 61613;
-        const queue = req.body.amqName || nconf.get('amq:queue');
-        utils.sendAmqMessage(amqHost, amqPort, queue, msg, (err) => {
-            if(err) return logError('ERROR', err);
-        });
-    };
+    async send(obj){
+        const msg = JSON.stringify(obj);
+        const sendmsg = promisify(utils.sendAmqMessage);
+        await sendmsg(this.amqHost, this.amqPort, this.queue, msg);
+    }
+}
 
-    const genCmd = (samplePath, reportPath) => {
-        const cmd_ = eval('`' + nconf.get('task:cmd') + '`');
-        const cmd = `${cmd_} > "${reportPath}"`;
-        logDebug('CMD', cmd);
+class ApiReporter {
+    constructor(req, log){
+        this.log = log;
+        this.apiHost = req.body.apiHost || nconf.get('report:api:host');
+    }
+
+    async send(obj){
+        const res = await axios.post(this.apiHost, obj);
+        this.log.info('REPORT', `(${res.status}) ${pretty(res.data)}` );
+    }
+}
+
+function getReporter(req, log){
+    switch(nconf.get('report:method')){
+        case 'amq':
+            return new AmqReporter(req, log);
+        case 'api':
+            return new ApiReporter(req, log);
+        default:
+            return {
+                send: (obj) => {
+                    log.info('REPORT', "Done");
+                }
+            }
+    }
+}
+
+async function runTask(req){
+
+    const log = getTaskLogger(req.body.taskId);
+    const reporter = getReporter(req, log);
+
+    //the parameter name mtters.
+    const genCmd = (sampleFile, taskDir) => {
+        const cmd = eval('`' + nconf.get('task:cmd') + '`');
+        log.info('CMD', cmd);
         return cmd;
     };
 
-    const reportName = req.body.taskId + nconf.get('report:suffix');
-    const reportPath = path.join(nconf.get('report:dir'), reportName);
-    const samplePath = path.join(nconf.get('task:dir'), req.body.taskId + path.extname(req.file.originalname));
-
     try{
-        // RENAME file by taskId.
         // **NOT** config 'multer' by 'storeage' to do the rename, because 'taskId' may be not ready at that moment.
-        await rename(req.file.path, samplePath);
-        resetReqFile(req.file, samplePath); //just for data coherence
+        //await resetReqFile(req.file, sampleFile);
+        log.info('SAMPLE', `${pretty(req.file)}`);
 
-        await mkdirp(path.dirname(reportPath));
-        await exec(genCmd(samplePath, reportPath));
-        sendmsg(JSON.stringify(result(null, reportName)));
+        const taskDir = path.join(nconf.get('task:dir'), req.body.taskId);
+        const {stdout, stderr} = await exec(genCmd(req.file.path, taskDir));
+        log.info('RESULT', stdout);
+
+        await reporter.send(JSON.parse(stdout)); //checking if stdout is json format
     }
     catch(err){
-        logError('ERROR', err);
-        sendmsg(JSON.stringify(result(err, null)));
+        log.error('ERROR', err);
+        await reporter.send(utils.genUtestResult(req.body.taskId, err, null));
     }
 };
 
-function resetReqFile(fileobj, newpath){
-    fileobj.path = newpath;
-    fileobj.filename = path.basename(newpath);
-    logDebug('SAMPLE', `${JSON.stringify(fileobj, null, 2)}`);
+function mkdirp(dirpath){
+    if(!fs.existsSync(dirpath))
+        fs.mkdirSync(dirpath, { resursie: true });
 }
 
-const port = nconf.get('port');
-app.listen(port, () => logDebug('SERV', `listening at ${port}`));
+async function resetReqFile(fileobj, newpath){
+    //move file
+    mkdirp(path.dirname(newpath))
+    await rename(fileobj.path, newpath);
+
+    //reset data
+    fileobj.path = newpath;
+    fileobj.filename = path.basename(newpath);
+}

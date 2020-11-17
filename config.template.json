@@ -1,0 +1,26 @@
+{
+    "host": "",
+    "port": 4128,
+    "task": {
+        "path": "/tasks",
+        "cmd": "echo sample file is '${sampleFile}' > '${taskDir}.log' && cat cmd-stdout.template.json",
+        "dir": "tasks",
+        "incomingDir": "tasks-incoming"
+    },
+    "report": {
+        "method": "local",
+        "api": {
+            "host": "http://localhost/ufo/mq.php"
+
+        },
+        "amq": {
+            "host": "",
+            "port": 61613,
+            "queue": "csfResult"
+        }
+    },
+    "log": {
+        "format": "[:date[Asia/Taipei]] :remote-addr - :remote-user ${yellow(':method')} :url HTTP/:http-version ${green(':status')} :res[content-length] ms",
+        "dateFormat": "YYYY-MM-DD HH:mm:ss.SSS"
+    }
+}

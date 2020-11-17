@@ -1,6 +1,7 @@
-### My ###
+### App ###
 tasks/
-reports/
+tasks-incoming/
+config.json
 
 # Created by https://www.gitignore.io/api/vim,node
 
