@@ -136,6 +136,7 @@ class AmqReporter {
         const msg = JSON.stringify(obj);
         const sendmsg = promisify(utils.sendAmqMessage);
         await sendmsg(this.amqHost, this.amqPort, this.queue, msg);
+        this.log.info('REPORT', "DONE" );
     }
 }
 
@@ -172,7 +173,7 @@ async function runTask(req){
     const reporter = getReporter(req, log);
 
     //the parameter name mtters.
-    const genCmd = (sampleFile, taskDir) => {
+    const genCmd = ({sampleFile, taskId, taskDir}) => {
         const cmd = eval('`' + nconf.get('task:cmd') + '`');
         log.info('CMD', cmd);
         return cmd;
@@ -183,8 +184,11 @@ async function runTask(req){
         //await resetReqFile(req.file, sampleFile);
         log.info('SAMPLE', `${pretty(req.file)}`);
 
-        const taskDir = path.join(nconf.get('task:dir'), req.body.taskId);
-        const {stdout, stderr} = await exec(genCmd(req.file.path, taskDir));
+        const {stdout, stderr} = await exec(genCmd({
+            sampleFile: req.file.path,
+            taskId: req.body.taskId,
+            taskDir: path.join(nconf.get('task:dir'), req.body.taskId),
+        }));
         log.info('RESULT', stdout);
 
         await reporter.send(JSON.parse(stdout)); //checking if stdout is json format
