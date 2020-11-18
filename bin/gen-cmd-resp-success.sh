@@ -1,6 +1,10 @@
 #!/bin/bash
 
 taskId=$1
+if [[ -z "$taskId" ]]; then
+    >&2 echo "No task id specified."
+    exit 1
+fi
 
 cat <<EOF
 {
@@ -19,18 +23,6 @@ cat <<EOF
     "value": "index.json",
     "desc": "JSON Result Download",
     "chtDesc": "JSON報表下載"
-  },
-  "a_info": {
-    "type": "label",
-    "value": "index.json",
-    "desc": "progress",
-    "chtDesc": "進度"
-  },
-  "a_msg": {
-    "type": "text",
-    "value": "This is a test message",
-    "desc": "",
-    "chtDesc": ""
   }
 }
 EOF

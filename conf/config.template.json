@@ -3,7 +3,7 @@
     "port": 4128,
     "task": {
         "path": "/tasks",
-        "cmd": "echo sample file is '${sampleFile}' > '${taskDir}.log' && ./gen-cmd-stdout-template.sh '${taskId}'",
+        "cmd": "echo sample file is '${sampleFile}' > '${taskDir}.log' && bin/gen-cmd-resp-success.sh '${taskId}'",
         "dir": "tasks",
         "incomingDir": "tasks-incoming"
     },
