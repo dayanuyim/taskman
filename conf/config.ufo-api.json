@@ -3,14 +3,14 @@
     "port": 4128,
     "task": {
         "path": "/tasks",
-        "cmd": "dufo '${sampleFile}' '${taskDir}' --delete-sample 2> '${taskDir}.log'",
+        "cmd": "dufo '${sampleFile}' '${taskDir}' --delete-sample > '${taskDir}.log' 2>&1 && cat '${taskDir}/result.json'",
         "dir": "tasks",
         "incomingDir": "tasks-incoming"
     },
     "report": {
         "method": "api",
         "api": {
-            "host": "http://localhost/ufo/mq.php"
+            "host": "http://localhost/mq.php"
 
         },
         "amq": {
