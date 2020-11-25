@@ -3,7 +3,7 @@
     "port": 4128,
     "task": {
         "path": "/tasks",
-        "cmd": "dufo '${sampleFile}' '${taskDir}' --delete-sample > '${taskDir}.log' 2>&1 && cat '${taskDir}/result.json'",
+        "cmd": "dufo '${sampleFile}' '${taskDir}' --delete-sample 2> '${taskDir}.log' | sed -n '/^{/,/^}/p'",
         "dir": "tasks",
         "incomingDir": "tasks-incoming"
     },
