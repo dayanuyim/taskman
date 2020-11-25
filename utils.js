@@ -27,11 +27,15 @@ module.exports.sendAmqMessage = function(host, port, queue, msg, callback)
 
 module.exports.genUtestResult = function(taskId, errmsg, link)
 {
-    const result = {
+    return errmsg? {
+        status: "FAIL",
+        message: (typeof errmsg == "string")? errmsg: JSON.stringify(errmsg),
         taskId,
-        status: errmsg? "FAIL": "SUCCESS",
-        message: errmsg? JSON.stringify(errmsg): '',
-        link: errmsg? '': link
-    };
-    return result;
+        link: ''
+    }: {
+        status: "SUCCESS",
+        message: '',
+        taskId,
+        link
+    }
 }

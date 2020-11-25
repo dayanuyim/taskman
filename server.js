@@ -18,35 +18,29 @@ const utils = require('./utils');
 
 function pretty(obj){ return JSON.stringify(obj, null, 2);}
 
-nconf.argv()
-    .env('__')
-    .defaults({ conf: `${__dirname}/config.json` })
-    .file(nconf.get('conf'));
-
-const log = function(){
+function getTaskLogger(taskId='', method=''){
     const fmt = nconf.get('log').dateFormat;
     const tz = moment.tz.guess();
     const now = () => {
         return moment().tz(tz).format(fmt);
     }
 
-    //const {blue: b, green: g, yellow: y, red: r} = colors;
+    const {blue: b, green: g, yellow: y, red: r} = colors;
     return {
-        debug: (tag, msg) => console.log(`[${now()}] ${colors.blue(tag)} ${msg}`),
-        info:  (tag, msg) => console.log(`[${now()}] ${colors.green(tag)} ${msg}`),
-        warn:  (tag, msg) => console.log(`[${now()}] ${colors.yellow(tag)} ${msg}`),
-        error: (tag, msg) => console.log(`[${now()}] ${colors.red(tag)} ${msg}`),
+        debug: (tag, msg) => console.log(`[${now()}][${taskId}][${method}] ${b(tag)} ${msg}`),
+        info:  (tag, msg) => console.log(`[${now()}][${taskId}][${method}] ${g(tag)} ${msg}`),
+        warn:  (tag, msg) => console.log(`[${now()}][${taskId}][${method}] ${y(tag)} ${msg}`),
+        error: (tag, msg) => console.log(`[${now()}][${taskId}][${method}] ${r(tag)} ${msg}`),
     };
-}();
+};
 
-function getTaskLogger(taskId){
-    return {
-        debug: (tag, msg) => log.debug(tag, `[${taskId}] ${msg}`),
-        info:  (tag, msg) =>  log.info(tag, `[${taskId}] ${msg}`),
-        warn:  (tag, msg) =>  log.warn(tag, `[${taskId}] ${msg}`),
-        error: (tag, msg) => log.error(tag, `[${taskId}] ${msg}`),
-    }
-}
+nconf.argv()
+    .env('__')
+    .defaults({ conf: `${__dirname}/config.json` })
+    .file(nconf.get('conf'));
+
+
+const log = getTaskLogger();
 
 // SET morgan date local
 const initMorgan = (log) => {
@@ -83,8 +77,40 @@ app.get(`${taskpath}/status`, (req, res) => {
 });
 */
 
+function taskExists(id){
+    const taskDir = path.join(__dirname, nconf.get('task:dir'), id);
+    return fs.existsSync(taskDir);
+}
+
+app.delete(`${taskpath}/:id`, async (req, res) => {
+    const log = getTaskLogger(req.params.id, 'DELETE');
+
+    if(!taskExists(req.params.id)){
+        res.status(404).end();
+        return;
+    }
+
+    const genCmd = ({taskId}) => {
+        const cmd = eval('`' + nconf.get('task:delete:cmd') + '`');
+        log.info('CMD', cmd);
+        return cmd;
+    };
+
+    try{
+        const {stdout, stderr} = await exec(genCmd({
+            taskId: req.params.id,
+        }));
+        log.info('CMD', `stdout[${stdout}], stderr[${stderr}]`);
+        res.status(200).end();
+    }
+    catch(e){
+        log.error('CMD', e.stack);
+        res.status(500).json({error: e.message})
+    }
+});
+
 app.get(`${taskpath}/:id/*`, (req, res) => {
-    const log = getTaskLogger(req.params.id);
+    const log = getTaskLogger(req.params.id, 'GET');
 
     const file = path.join(__dirname,
         nconf.get('task:dir'),
@@ -92,10 +118,12 @@ app.get(`${taskpath}/:id/*`, (req, res) => {
         req.params['0']);
     log.debug('DL', file);
 
-    if(!fs.existsSync(file))
+    if(!fs.existsSync(file)){
         res.status(404).end();
-    else
-        res.sendFile(file, {dotfiles: 'allow'});
+        return;
+    }
+
+    res.sendFile(file, {dotfiles: 'allow'});
 });
 
 app.post(taskpath, upload.single('sampleFile'), (req, res) => {
@@ -147,8 +175,9 @@ class ApiReporter {
     }
 
     async send(obj){
+        this.log.info('REPORT', `send ${pretty(obj)}` );
         const res = await axios.post(this.apiHost, obj);
-        this.log.info('REPORT', `(${res.status}) ${pretty(res.data)}` );
+        this.log.info('REPORT', `resp (${res.status}) ${pretty(res.data)}` );
     }
 }
 
@@ -169,12 +198,12 @@ function getReporter(req, log){
 
 async function runTask(req){
 
-    const log = getTaskLogger(req.body.taskId);
+    const log = getTaskLogger(req.body.taskId, 'POST');
     const reporter = getReporter(req, log);
 
     //the parameter name mtters.
     const genCmd = ({sampleFile, taskId, taskDir}) => {
-        const cmd = eval('`' + nconf.get('task:cmd') + '`');
+        const cmd = eval('`' + nconf.get('task:create:cmd') + '`');
         log.info('CMD', cmd);
         return cmd;
     };
@@ -189,13 +218,12 @@ async function runTask(req){
             taskId: req.body.taskId,
             taskDir: path.join(nconf.get('task:dir'), req.body.taskId),
         }));
-        log.info('RESULT', stdout);
-
+        log.info('CMD', `stdout[${stdout}], stderr[${stderr}]`);
         await reporter.send(JSON.parse(stdout)); //checking if stdout is json format
     }
-    catch(err){
-        log.error('ERROR', err);
-        await reporter.send(utils.genUtestResult(req.body.taskId, err, null));
+    catch(e){
+        log.error('CMD', e.stack);
+        await reporter.send(utils.genUtestResult(req.body.taskId, e.message, null));
     }
 };
 
