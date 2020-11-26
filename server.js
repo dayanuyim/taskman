@@ -34,6 +34,9 @@ function getTaskLogger(taskId='', method=''){
     };
 };
 
+const runningTasks = new Set();
+
+// =========== init ====================
 nconf.argv()
     .env('__')
     .defaults({ conf: `${__dirname}/config.json` })
@@ -82,14 +85,21 @@ function taskExists(id){
     return fs.existsSync(taskDir);
 }
 
-app.delete(`${taskpath}/:id`, async (req, res) => {
+app.delete(`${taskpath}/:id`, (req, res) => {
     const log = getTaskLogger(req.params.id, 'DELETE');
 
-    if(!taskExists(req.params.id)){
-        res.status(404).end();
-        return;
-    }
+    if(!taskExists(req.params.id))
+        return res.status(404).end();
 
+    // need more robust wasy to do this
+    //if(!runningTasks.has(req.params.id))
+    //    return res.status(400).end();
+
+    res.status(200).end();
+    deleteTask(req.params.id);
+});
+
+async function deleteTask(taskId){
     const genCmd = ({taskId}) => {
         const cmd = eval('`' + nconf.get('task:delete:cmd') + '`');
         log.info('CMD', cmd);
@@ -97,17 +107,13 @@ app.delete(`${taskpath}/:id`, async (req, res) => {
     };
 
     try{
-        const {stdout, stderr} = await exec(genCmd({
-            taskId: req.params.id,
-        }));
+        const {stdout, stderr} = await exec(genCmd({taskId}));
         log.info('CMD', `stdout[${stdout}], stderr[${stderr}]`);
-        res.status(200).end();
     }
     catch(e){
         log.error('CMD', e.stack);
-        res.status(500).json({error: e.message})
     }
-});
+}
 
 app.get(`${taskpath}/:id/*`, (req, res) => {
     const log = getTaskLogger(req.params.id, 'GET');
@@ -198,8 +204,10 @@ function getReporter(req, log){
 
 async function runTask(req){
 
-    const log = getTaskLogger(req.body.taskId, 'POST');
+    const taskId = req.body.taskId;
+    const log = getTaskLogger(taskId, 'POST');
     const reporter = getReporter(req, log);
+
 
     //the parameter name mtters.
     const genCmd = ({sampleFile, taskId, taskDir}) => {
@@ -209,21 +217,26 @@ async function runTask(req){
     };
 
     try{
+        runningTasks.add(taskId);
+
         // **NOT** config 'multer' by 'storeage' to do the rename, because 'taskId' may be not ready at that moment.
         //await resetReqFile(req.file, sampleFile);
         log.info('SAMPLE', `${pretty(req.file)}`);
 
         const {stdout, stderr} = await exec(genCmd({
             sampleFile: req.file.path,
-            taskId: req.body.taskId,
-            taskDir: path.join(nconf.get('task:dir'), req.body.taskId),
+            taskId,
+            taskDir: path.join(nconf.get('task:dir'), taskId),
         }));
         log.info('CMD', `stdout[${stdout}], stderr[${stderr}]`);
         await reporter.send(JSON.parse(stdout)); //checking if stdout is json format
     }
     catch(e){
         log.error('CMD', e.stack);
-        await reporter.send(utils.genUtestResult(req.body.taskId, e.message, null));
+        await reporter.send(utils.genUtestResult(taskId, e.message, null));
+    }
+    finally{
+        runningTasks.delete(taskId);
     }
 };
 
