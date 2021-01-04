@@ -1,3 +1,3 @@
 {
-    "ignore": [ "README.md", "conf", "tasks", "tasks-incoming"]
+    "ignore": [ "README.md", "conf", "docker", "tasks", "tasks-incoming"]
 }

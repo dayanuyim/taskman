@@ -3,9 +3,13 @@
     "port": 4128,
     "task": {
         "path": "/tasks",
-        "cmd": "echo sample file is '${sampleFile}' > '${taskDir}.log' && bin/gen-cmd-resp-success.sh '${taskId}'",
         "dir": "tasks",
-        "incomingDir": "tasks-incoming"
+        "create": {
+            "cmd": "echo sample file is '${sampleFile}' > '${taskDir}.log' && bin/gen-cmd-resp-success.sh '${taskId}'"
+        },
+        "delete": {
+            "cmd": "docker stop 'ufo-cmd-${taskId}'"
+        }
     },
     "report": {
         "method": "local",

@@ -4,7 +4,6 @@
     "task": {
         "path": "/tasks",
         "dir": "tasks",
-        "incomingDir": "tasks-incoming",
         "create": {
             "cmd": "dufo '${sampleFile}' '${taskDir}' --delete-sample 2> '${taskDir}.log' | sed -n '/^{/,/^}/p'"
         },

@@ -3,9 +3,13 @@
     "port": 4128,
     "task": {
         "path": "/csf/task/upload",
-        "cmd": "dufo '${sampleFile}' '${taskDir}' --delete-sample 2> '${taskDir}.log'",
         "dir": "tasks",
-        "incomingDir": "tasks-incoming"
+        "create": {
+            "cmd": "dufo '${sampleFile}' '${taskDir}' --delete-sample 2> '${taskDir}.log'"
+        },
+        "delete": {
+            "cmd": "docker stop 'ufo-cmd-${taskId}'"
+        }
     },
     "report": {
         "method": "amq",

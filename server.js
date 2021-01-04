@@ -67,7 +67,7 @@ app.use(bodyParser.json());
 
 const taskDirRoot = toAbs(nconf.get('task:dir'));
 
-const upload = multer({ dest: nconf.get('task:incomingDir')});
+const upload = multer({ dest: path.join(taskDirRoot, ".incoming")});
 /* DONT DO THIS BECAUSE THE 'taskId' IS NOT READY.
 const upload = multer({ storage: multer.diskStorage({
     destination: taskDirRoot,
