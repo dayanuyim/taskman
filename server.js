@@ -18,6 +18,10 @@ const utils = require('./utils');
 
 function pretty(obj){ return JSON.stringify(obj, null, 2);}
 
+function toAbs(p){
+    return path.isAbsolute(p)? p: path.join(__dirname, p);
+}
+
 function getTaskLogger(taskId='', method=''){
     const fmt = nconf.get('log').dateFormat;
     const tz = moment.tz.guess();
@@ -61,10 +65,12 @@ app.use(initMorgan(nconf.get('log')));
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
+const taskDirRoot = toAbs(nconf.get('task:dir'));
+
 const upload = multer({ dest: nconf.get('task:incomingDir')});
 /* DONT DO THIS BECAUSE THE 'taskId' IS NOT READY.
 const upload = multer({ storage: multer.diskStorage({
-    destination: nconf.get('task:dir'),
+    destination: taskDirRoot,
       filename: (req, file, cb) => {
           cb(null, req.body.taskId);
       }
@@ -81,8 +87,7 @@ app.get(`${taskpath}/status`, (req, res) => {
 */
 
 function taskExists(id){
-    const taskDir = path.join(__dirname, nconf.get('task:dir'), id);
-    return fs.existsSync(taskDir);
+    return fs.existsSync(path.join(taskDirRoot, id));
 }
 
 app.delete(`${taskpath}/:id`, (req, res) => {
@@ -118,8 +123,8 @@ async function deleteTask(taskId){
 app.get(`${taskpath}/:id/*`, (req, res) => {
     const log = getTaskLogger(req.params.id, 'GET');
 
-    const file = path.join(__dirname,
-        nconf.get('task:dir'),
+    const file = path.join(
+        taskDirRoot,
         req.params.id,
         req.params['0']);
     log.debug('DL', file);
@@ -226,7 +231,7 @@ async function runTask(req){
         const {stdout, stderr} = await exec(genCmd({
             sampleFile: req.file.path,
             taskId,
-            taskDir: path.join(nconf.get('task:dir'), taskId),
+            taskDir: path.join(taskDirRoot, taskId),
         }));
         log.info('CMD', `stdout[${stdout}], stderr[${stderr}]`);
         await reporter.send(JSON.parse(stdout)); //checking if stdout is json format
