@@ -1,0 +1,30 @@
+{
+    "host": "",
+    "port": 4128,
+    "task": {
+        "path": "/tasks",
+        "dir": "tasks",
+        "create": {
+            "cmd": "dufo '${sampleFile}' '${taskDir}' --delete-sample 2> '${taskDir}.log' | sed -n '/^{/,/^}/p'"
+        },
+        "delete": {
+            "cmd": "bash -c 'docker rm -f ufo-cmd-${taskId} || true'"
+        }
+    },
+    "report": {
+        "method": "api",
+        "api": {
+            "host": "http://localhost/mq.php"
+
+        },
+        "amq": {
+            "host": "",
+            "port": 61613,
+            "queue": "csfResult"
+        }
+    },
+    "log": {
+        "format": "[:date[Asia/Taipei]] :remote-addr - :remote-user ${yellow(':method')} :url HTTP/:http-version ${green(':status')} :res[content-length] ms",
+        "dateFormat": "YYYY-MM-DD HH:mm:ss.SSS"
+    }
+}
