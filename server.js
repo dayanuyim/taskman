@@ -38,7 +38,7 @@ const runningTasks = new Set();
 
 // =========== init ====================
 nconf.argv()
-    .env('__')
+    .env('_')
     .defaults({ conf: `${__dirname}/config.json` })
     .file(nconf.get('conf'));
 
