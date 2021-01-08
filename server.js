@@ -174,11 +174,16 @@ class AmqReporter {
 class ApiReporter {
     constructor(req, log){
         this.log = log;
-        this.apiHost = req.body.apiHost || nconf.get('report:api:host');
+        this.apiHost = this.prefixHttp(req.body.apiHost || nconf.get('report:api:host'));
+    }
+
+    prefixHttp(s){
+        if(!s.startsWith("http"))   // not http or https
+            return "http://" + s;   // default http
     }
 
     async send(obj){
-        this.log.info('REPORT', `API sending ${pretty(obj)}` );
+        this.log.info('REPORT', `API sending ${this.apiHost}: ${pretty(obj)}` );
         const res = await axios.post(this.apiHost, obj);
         this.log.info('REPORT', `API resp (${res.status}) ${pretty(res.data)}` );
     }
