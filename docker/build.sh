@@ -1,6 +1,12 @@
 #!/bin/bash
 
-IMG=dayanuyimable/taskman:1.0.0
+VER="${1#[vV]}"
+IMG="dayanuyimable/taskman:$VER"
+
+if [[ -z "$VER" ]]; then
+    >&2 echo "usage: ${0##*/} <version, eg. 1.0.0>"
+    exit 1
+fi
 
 docker build \
     --build-arg "GIT_HASH=$(git log --format="%h" -n1)" \

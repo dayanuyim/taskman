@@ -25,17 +25,13 @@ module.exports.sendAmqMessage = function(host, port, queue, msg, callback)
     callback);
 };
 
-module.exports.genUtestResult = function(taskId, errmsg, link)
+module.exports.genAppResult = function(taskId, errmsg = '', link = null)
 {
-    return errmsg? {
-        status: "FAIL",
+    const status = errmsg? "FAIL": "SUCCESS";
+    return {
+        taskId,
+        status,
         message: (typeof errmsg == "string")? errmsg: JSON.stringify(errmsg),
-        taskId,
-        link: ''
-    }: {
-        status: "SUCCESS",
-        message: '',
-        taskId,
-        link
-    }
+        link,
+    };
 }

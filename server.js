@@ -137,25 +137,15 @@ app.get(`${taskpath}/:id/*`, (req, res) => {
     res.sendFile(file, {dotfiles: 'allow'});
 });
 
-app.post(taskpath, upload.single('sampleFile'), (req, res) => {
-    if(!req.body.taskId){
-        res.status(400).json({
-            status: "FAIL",
-            message: "No taskId",
-        });
-    }
-    else if(!req.file){
-        res.status(400).json({
-            status: "FAIL",
-            message: "No sampleFile",
-        });
-    }
-    else{
-        res.status(200).json({
-            status: "SUCCESS",
-            message: "",
-        });
+app.post(`${taskpath}/:id?`, upload.single('sampleFile'), (req, res) => {
+    const taskId = req.params.id || req.body.taskId;  //back-compatability to get taskId from body
 
+    if (!taskId)
+        res.status(400).json(utils.genAppResult(taskId, "No taskId"));
+    else if (!req.file)
+        res.status(400).json(utils.genAppResult(taskId, "No sampleFile"));
+    else {
+        res.status(200).json(utils.genAppResult(taskId));
         runTask(req);
     }
 });
@@ -238,7 +228,7 @@ async function runTask(req){
     }
     catch(e){
         log.error('CMD', e.stack);
-        await reporter.send(utils.genUtestResult(taskId, e.message, null));
+        await reporter.send(utils.genAppResult(taskId, e.message));
     }
     finally{
         runningTasks.delete(taskId);
