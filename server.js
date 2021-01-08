@@ -139,6 +139,7 @@ app.get(`${taskpath}/:id/*`, (req, res) => {
 
 app.post(`${taskpath}/:id?`, upload.single('sampleFile'), (req, res) => {
     const taskId = req.params.id || req.body.taskId;  //back-compatability to get taskId from body
+    const file = req.file;
 
     if (!taskId)
         res.status(400).json(utils.genAppResult(taskId, "No taskId"));
@@ -146,7 +147,7 @@ app.post(`${taskpath}/:id?`, upload.single('sampleFile'), (req, res) => {
         res.status(400).json(utils.genAppResult(taskId, "No sampleFile"));
     else {
         res.status(200).json(utils.genAppResult(taskId));
-        runTask(req);
+        runTask(req, taskId, file);
     }
 });
 
@@ -162,10 +163,11 @@ class AmqReporter {
     }
 
     async send(obj){
+        this.log.info('REPORT', `AMQ sending ${pretty(obj)}` );
         const msg = JSON.stringify(obj);
         const sendmsg = promisify(utils.sendAmqMessage);
         await sendmsg(this.amqHost, this.amqPort, this.queue, msg);
-        this.log.info('REPORT', "DONE" );
+        this.log.info('REPORT', "AMQ done" );
     }
 }
 
@@ -176,9 +178,9 @@ class ApiReporter {
     }
 
     async send(obj){
-        this.log.info('REPORT', `send ${pretty(obj)}` );
+        this.log.info('REPORT', `API sending ${pretty(obj)}` );
         const res = await axios.post(this.apiHost, obj);
-        this.log.info('REPORT', `resp (${res.status}) ${pretty(res.data)}` );
+        this.log.info('REPORT', `API resp (${res.status}) ${pretty(res.data)}` );
     }
 }
 
@@ -197,13 +199,7 @@ function getReporter(req, log){
     }
 }
 
-async function runTask(req){
-
-    const taskId = req.body.taskId;
-    const log = getTaskLogger(taskId, 'POST');
-    const reporter = getReporter(req, log);
-
-
+async function _runTask(taskId, file, log){
     //the parameter name mtters.
     const genCmd = ({sampleFile, taskId, taskDir}) => {
         const cmd = eval('`' + nconf.get('task:create:cmd') + '`');
@@ -211,24 +207,38 @@ async function runTask(req){
         return cmd;
     };
 
-    try{
-        runningTasks.add(taskId);
-
+    try {
         // **NOT** config 'multer' by 'storeage' to do the rename, because 'taskId' may be not ready at that moment.
         //await resetReqFile(req.file, sampleFile);
-        log.info('SAMPLE', `${pretty(req.file)}`);
+        log.info('SAMPLE', `${pretty(file)}`);
 
-        const {stdout, stderr} = await exec(genCmd({
-            sampleFile: req.file.path,
+        const { stdout, stderr } = await exec(genCmd({
+            sampleFile: file.path,
             taskId,
             taskDir: path.join(taskDirRoot, taskId),
         }));
         log.info('CMD', `stdout[${stdout}], stderr[${stderr}]`);
-        await reporter.send(JSON.parse(stdout)); //checking if stdout is json format
+
+        return JSON.parse(stdout);   //checking if stdout is json format
     }
-    catch(e){
+    catch (e) {
         log.error('CMD', e.stack);
-        await reporter.send(utils.genAppResult(taskId, e.message));
+        return utils.genAppResult(taskId, e.message);
+    }
+}
+
+async function runTask(req, taskId, file){
+
+    const log = getTaskLogger(taskId, 'POST');
+    const reporter = getReporter(req, log);
+
+    runningTasks.add(taskId);
+    try{
+        const result = await _runTask(taskId, file, log);
+        await reporter.send(result);
+    }
+    catch (e) {
+        log.error('REPORT', e.stack);
     }
     finally{
         runningTasks.delete(taskId);
