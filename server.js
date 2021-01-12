@@ -91,7 +91,7 @@ function taskExists(id){
 }
 
 app.delete(`${taskpath}/:id`, (req, res) => {
-    const log = getTaskLogger(req.params.id, 'DELETE');
+    const log = getTaskLogger(req.params.id, req.method);
 
     if(!taskExists(req.params.id))
         return res.status(404).end();
@@ -121,7 +121,7 @@ async function deleteTask(taskId){
 }
 
 app.get(`${taskpath}/:id/*`, (req, res) => {
-    const log = getTaskLogger(req.params.id, 'GET');
+    const log = getTaskLogger(req.params.id, req.method);
 
     const file = path.join(
         taskDirRoot,
@@ -143,11 +143,11 @@ app.post(`${taskpath}/:id?`, upload.single('sampleFile'), (req, res) => {
 
     if (!taskId)
         res.status(400).json(utils.genAppResult(taskId, "No taskId"));
-    else if (!req.file)
+    else if (!file)
         res.status(400).json(utils.genAppResult(taskId, "No sampleFile"));
     else {
         res.status(200).json(utils.genAppResult(taskId));
-        runTask(req, taskId, file);
+        runTask(taskId, file, req);
     }
 });
 
@@ -179,7 +179,8 @@ class ApiReporter {
 
     prefixHttp(s){
         if(!s.startsWith("http"))   // not http or https
-            return "http://" + s;   // default http
+            s = "http://" + s;   // default http
+        return s;
     }
 
     async send(obj){
@@ -204,9 +205,9 @@ function getReporter(req, log){
     }
 }
 
-async function _runTask(taskId, file, log){
+async function _runTask(taskId, file, envs, log){
     //the parameter name mtters.
-    const genCmd = ({sampleFile, taskId, taskDir}) => {
+    const genCmd = ({sampleFile, envString, outputDir}) => {
         const cmd = eval('`' + nconf.get('task:create:cmd') + '`');
         log.info('CMD', cmd);
         return cmd;
@@ -219,8 +220,8 @@ async function _runTask(taskId, file, log){
 
         const { stdout, stderr } = await exec(genCmd({
             sampleFile: file.path,
-            taskId,
-            taskDir: path.join(taskDirRoot, taskId),
+            envString: toDockerEnv(envs),
+            outputDir: path.join(taskDirRoot, taskId),
         }));
         log.info('CMD', `stdout[${stdout}], stderr[${stderr}]`);
 
@@ -232,14 +233,16 @@ async function _runTask(taskId, file, log){
     }
 }
 
-async function runTask(req, taskId, file){
+async function runTask(taskId, file, req){
 
-    const log = getTaskLogger(taskId, 'POST');
-    const reporter = getReporter(req, log);
+    const log = getTaskLogger(taskId, req.method);
 
     runningTasks.add(taskId);
     try{
-        const result = await _runTask(taskId, file, log);
+        const envs = getEnvParams(req.body);
+        const result = await _runTask(taskId, file, envs, log);
+
+        const reporter = getReporter(req, log);
         await reporter.send(result);
     }
     catch (e) {
@@ -249,6 +252,20 @@ async function runTask(req, taskId, file){
         runningTasks.delete(taskId);
     }
 };
+
+// TODO: the function is not portable
+function getEnvParams(params){
+    const prefix = "vuln-"
+    return Object.fromEntries(Object.entries(params)
+        .filter( ([k, v]) => k.startsWith(prefix)));
+}
+
+// TODO: the function is not portable
+function toDockerEnv(envs){
+    return Object.entries(envs)
+        .map(([k, v]) => `-e "${k.replace(/-/g, '_')}=${v}"`)
+        .join(' ');
+}
 
 function mkdirp(dirpath){
     if(!fs.existsSync(dirpath))
