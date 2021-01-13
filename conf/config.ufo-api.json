@@ -5,7 +5,7 @@
         "path": "/tasks",
         "dir": "/opt/ufo/tasks",
         "create": {
-            "cmd": "dufo cmd ${envString} '${sampleFile}' '${outputDir}' --delete-sample 2> '${outputDir}.log' | sed -n '/^{/,/^}/p'"
+            "cmd": "echo dufo cmd ${toDockerEnv(params)} '${sampleFile}' '${outputDir}' --delete-sample 2> '${outputDir}.log' | sed -n '/^{/,/^}/p'",
         },
         "delete": {
             "cmd": "bash -c 'docker rm -f ufo-cmd-${taskId} || true'"
@@ -13,6 +13,8 @@
     },
     "report": {
         "method": "api",
+        "sync": {
+        },
         "api": {
             "host": "http://localhost/ufo/mq.php"
 

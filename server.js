@@ -137,17 +137,27 @@ app.get(`${taskpath}/:id/*`, (req, res) => {
     res.sendFile(file, {dotfiles: 'allow'});
 });
 
-app.post(`${taskpath}/:id?`, upload.single('sampleFile'), (req, res) => {
+app.post(`${taskpath}/:id?`, upload.single('sampleFile'), async (req, res) => {
     const taskId = req.params.id || req.body.taskId;  //back-compatability to get taskId from body
     const file = req.file;
+
+    const log = getTaskLogger(taskId, req.method);
 
     if (!taskId)
         res.status(400).json(utils.genAppResult(taskId, "No taskId"));
     else if (!file)
         res.status(400).json(utils.genAppResult(taskId, "No sampleFile"));
+    else if (nconf.get('report:method') == 'sync'){
+        const params = getParams(req.body);
+        const result = await runTask(taskId, file, params, log);
+        res.status(200).json(result);
+    }
     else {
         res.status(200).json(utils.genAppResult(taskId));
-        runTask(taskId, file, req);
+
+        const reporter = getReporter(req, log);
+        const params = getParams(req.body);
+        runTaskAndReport(taskId, file, params, reporter, log);
     }
 });
 
@@ -205,14 +215,26 @@ function getReporter(req, log){
     }
 }
 
-async function _runTask(taskId, file, envs, log){
+async function runTaskAndReport(taskId, file, params, reporter, log)
+{
+    const result = await runTask(taskId, file, params, log);
+    try{
+        await reporter.send(result);
+    }
+    catch (e) {
+        log.error('REPORT', e.stack);
+    }
+}
+
+async function runTask(taskId, file, params, log){
     //the parameter name mtters.
-    const genCmd = ({sampleFile, envString, outputDir}) => {
+    const genCmd = ({sampleFile, params, outputDir}) => {
         const cmd = eval('`' + nconf.get('task:create:cmd') + '`');
         log.info('CMD', cmd);
         return cmd;
     };
 
+    runningTasks.add(taskId);
     try {
         // **NOT** config 'multer' by 'storeage' to do the rename, because 'taskId' may be not ready at that moment.
         //await resetReqFile(req.file, sampleFile);
@@ -220,49 +242,37 @@ async function _runTask(taskId, file, envs, log){
 
         const { stdout, stderr } = await exec(genCmd({
             sampleFile: file.path,
-            envString: toDockerEnv(envs),
+            params,
             outputDir: path.join(taskDirRoot, taskId),
         }));
         log.info('CMD', `stdout[${stdout}], stderr[${stderr}]`);
 
-        return JSON.parse(stdout);   //checking if stdout is json format
+        //checking if stdout is json format
+        try{
+            return JSON.parse(stdout);
+        }catch(e){
+            return Object.assign(utils.genAppResult(taskId), {data: stdout});
+        }
     }
     catch (e) {
         log.error('CMD', e.stack);
         return utils.genAppResult(taskId, e.message);
     }
-}
-
-async function runTask(taskId, file, req){
-
-    const log = getTaskLogger(taskId, req.method);
-
-    runningTasks.add(taskId);
-    try{
-        const envs = getEnvParams(req.body);
-        const result = await _runTask(taskId, file, envs, log);
-
-        const reporter = getReporter(req, log);
-        await reporter.send(result);
-    }
-    catch (e) {
-        log.error('REPORT', e.stack);
-    }
     finally{
         runningTasks.delete(taskId);
     }
-};
-
-// TODO: the function is not portable
-function getEnvParams(params){
-    const prefix = "vuln-"
-    return Object.fromEntries(Object.entries(params)
-        .filter( ([k, v]) => k.startsWith(prefix)));
 }
 
-// TODO: the function is not portable
-function toDockerEnv(envs){
-    return Object.entries(envs)
+function getParams(body){
+    const prefix = "p-"
+    return Object.fromEntries(Object.entries(body)
+        .filter( ([k, v]) => k.startsWith(prefix) && k.length > prefix.length)
+        .map( ([k, v]) => [k.substr(prefix.length), v]));
+}
+
+// The function is the utility used by generating cmd
+function toDockerEnv(params){
+    return Object.entries(params)
         .map(([k, v]) => `-e "${k.replace(/-/g, '_')}=${v}"`)
         .join(' ');
 }
