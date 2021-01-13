@@ -228,7 +228,7 @@ async function runTaskAndReport(taskId, file, params, reporter, log)
 
 async function runTask(taskId, file, params, log){
     //the parameter name mtters.
-    const genCmd = ({sampleFile, params, outputDir}) => {
+    const genCmd = ({taskId, sampleFile, params, outputDir}) => {
         const cmd = eval('`' + nconf.get('task:create:cmd') + '`');
         log.info('CMD', cmd);
         return cmd;
@@ -241,6 +241,7 @@ async function runTask(taskId, file, params, log){
         log.info('SAMPLE', `${pretty(file)}`);
 
         const { stdout, stderr } = await exec(genCmd({
+            taskId,
             sampleFile: file.path,
             params,
             outputDir: path.join(taskDirRoot, taskId),
