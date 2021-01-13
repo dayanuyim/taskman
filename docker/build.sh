@@ -3,8 +3,19 @@
 VER="${1#[vV]}"
 IMG="dayanuyimable/taskman:$VER"
 
+function usage {
+    images="$(docker images --format '{{.Repository}}:{{.Tag}}' | grep "$IMG" | sort -r | sed 's/^/\t/')"
+
+    cat >&2 <<-EOT
+	usage: ${0##*/} <version, eg. 1.0.0>
+
+	found old image in the system:
+	$images
+	EOT
+}
+
 if [[ -z "$VER" ]]; then
-    >&2 echo "usage: ${0##*/} <version, eg. 1.0.0>"
+    usage
     exit 1
 fi
 

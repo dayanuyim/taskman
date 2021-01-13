@@ -10,7 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 #  basic utils (use 'apt-get', instead of 'apt' for CLI)
 RUN apt-get update && apt-get install -y \
         tzdata locales \
-        curl iputils-ping git nodejs npm
+        curl iputils-ping git
 
 #ENV TZ Asia/Taipei (after tzdata is installed)
 RUN ln -sf /usr/share/zoneinfo/Asia/Taipei /etc/localtime && \
@@ -19,9 +19,10 @@ RUN ln -sf /usr/share/zoneinfo/Asia/Taipei /etc/localtime && \
 ENV LANG=en_US.UTF-8
 RUN locale-gen $LANG && dpkg-reconfigure locales
 
-# more dep ================
+# app dep ================
+RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 RUN apt-get update && apt-get install -y \
-        docker-compose
+        nodejs docker-compose
 
 # main app =========================================
 
@@ -37,6 +38,7 @@ RUN cd "$APP_HOME" && npm install
 ENV PATH="/root/bin:$PATH"
 
 # start ============================================
+EXPOSE 4128
 WORKDIR "$APP_HOME"
 ENTRYPOINT npm start
 
