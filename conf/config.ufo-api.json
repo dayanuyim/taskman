@@ -17,7 +17,6 @@
         },
         "api": {
             "host": "http://localhost/ufo/mq.php"
-
         },
         "amq": {
             "host": "",
