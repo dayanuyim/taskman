@@ -19,6 +19,16 @@ if [[ -z "$VER" ]]; then
     exit 1
 fi
 
+if ! (git diff --exit-code && git diff --cached --exit-code ) &> /dev/null; then
+    >&2 echo "error: you have uncommit code"
+    exit 2
+fi
+
+if ! git push -n |& grep -q 'update-to-date'; then
+    >&2 echo "error: you have unpushed code"
+    exit 3
+fi
+
 docker build \
     --build-arg "GIT_HASH=$(git log --format="%h" -n1)" \
     --build-arg "APP_HOME=/root/taskman" \
