@@ -140,7 +140,7 @@ app.get(`${taskpath}/:id/*`, (req, res) => {
 app.post(`${taskpath}/:id?`, upload.single('sampleFile'), async (req, res) => {
     const taskId = req.params.id || req.body.taskId;  //back-compatability to get taskId from body
     const file = req.file;
-
+    const params = getParams(req.body, 'p-', ([k, v]) => [k.replace(/-/g, '_'), v]);
     const log = getTaskLogger(taskId, req.method);
 
     if (!taskId)
@@ -148,16 +148,22 @@ app.post(`${taskpath}/:id?`, upload.single('sampleFile'), async (req, res) => {
     else if (!file)
         res.status(400).json(utils.genAppResult(taskId, "No sampleFile"));
     else if (nconf.get('report:method') == 'sync'){
-        const params = getParams(req.body);
         const result = await runTask(taskId, file, params, log);
         res.status(200).json(result);
     }
     else {
         res.status(200).json(utils.genAppResult(taskId));
 
-        const reporter = getReporter(req, log);
-        const params = getParams(req.body);
-        runTaskAndReport(taskId, file, params, reporter, log);
+        setTimeout( async () => {
+            const result = await runTask(taskId, file, params, log);
+            try {
+                const reporter = getReporter(req, log);
+                await reporter.send(result);
+            }
+            catch (e) {
+                log.error('REPORT', e.stack);
+            }
+        }, 0);
     }
 });
 
@@ -215,20 +221,9 @@ function getReporter(req, log){
     }
 }
 
-async function runTaskAndReport(taskId, file, params, reporter, log)
-{
-    const result = await runTask(taskId, file, params, log);
-    try{
-        await reporter.send(result);
-    }
-    catch (e) {
-        log.error('REPORT', e.stack);
-    }
-}
-
 async function runTask(taskId, file, params, log){
     //the parameter name mtters.
-    const genCmd = ({taskId, sampleFile, params, outputDir}) => {
+    const genCmd = ({taskId, sampleFile, outputDir}) => {
         const cmd = eval('`' + nconf.get('task:create:cmd') + '`');
         log.info('CMD', cmd);
         return cmd;
@@ -243,9 +238,10 @@ async function runTask(taskId, file, params, log){
         const { stdout, stderr } = await exec(genCmd({
             taskId,
             sampleFile: file.path,
-            params,
             outputDir: path.join(taskDirRoot, taskId),
-        }));
+        }), {
+            env: Object.assign({}, process.env, params),
+        });
         log.info('CMD', `stdout[${stdout}], stderr[${stderr}]`);
 
         //checking if stdout is json format
@@ -264,19 +260,36 @@ async function runTask(taskId, file, params, log){
     }
 }
 
-function getParams(body){
-    const prefix = "p-"
+function getParams(body, prefix, mapping = null){
+    const is_prefix = ([k, v]) => k.startsWith(prefix) && k.length > prefix.length;
+    //const rm_prefix = ([k, v]) => [k.substr(prefix.length), v];
+    if(!mapping) mapping = (e) => e;
+
     return Object.fromEntries(Object.entries(body)
-        .filter( ([k, v]) => k.startsWith(prefix) && k.length > prefix.length)
-        .map( ([k, v]) => [k.substr(prefix.length), v]));
+        .filter(is_prefix)
+        .map(mapping)
+    );
 }
 
+/*
+// The function is the utility used by generating cmd
+function toEnvString(params, trailing_space=false){
+    const suf = trailing_space? " ": "";
+    const sep = trailing_space? "": " ";
+    return Object.entries(params)
+        .map(([k, v]) => `"${k.replace(/-/g, '_')}=${v}"${suf}`) // trailing space
+        .join(sep);
+}
+*/
+
+/*
 // The function is the utility used by generating cmd
 function toDockerEnv(params){
     return Object.entries(params)
         .map(([k, v]) => `-e "${k.replace(/-/g, '_')}=${v}"`)
         .join(' ');
 }
+*/
 
 function mkdirp(dirpath){
     if(!fs.existsSync(dirpath))
