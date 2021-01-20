@@ -10,7 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 #  basic utils (use 'apt-get', instead of 'apt' for CLI)
 RUN apt-get update && apt-get install -y \
         tzdata locales \
-        curl iputils-ping git
+        curl iputils-ping
 
 #ENV TZ Asia/Taipei (after tzdata is installed)
 RUN ln -sf /usr/share/zoneinfo/Asia/Taipei /etc/localtime && \
@@ -22,7 +22,7 @@ RUN locale-gen $LANG && dpkg-reconfigure locales
 # app dep ================
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 RUN apt-get update && apt-get install -y \
-        nodejs docker-compose
+        nodejs git docker-compose
 
 # main app =========================================
 

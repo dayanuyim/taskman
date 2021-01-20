@@ -5,7 +5,7 @@
         "path": "/tasks",
         "dir": "tasks",
         "create": {
-            "cmd": "dufo cmd ${toDockerEnv(params)} '${sampleFile}' '${outputDir}' --delete-sample 2> '${outputDir}.log' | sed -n '/^{/,/^}/p'"
+            "cmd": "dufo cmd '${sampleFile}' '${outputDir}' --delete-sample 2> '${outputDir}.log' | sed -n '/^{/,/^}/p'"
         },
         "delete": {
             "cmd": "bash -c 'docker rm -f ufo-cmd-${taskId} || true'"
