@@ -140,7 +140,7 @@ app.get(`${taskpath}/:id/*`, (req, res) => {
 app.post(`${taskpath}/:id?`, upload.single('sampleFile'), async (req, res) => {
     const taskId = req.params.id || req.body.taskId;  //back-compatability to get taskId from body
     const file = req.file;
-    const params = getParams(req.body, 'p-', ([k, v]) => [k.replace(/-/g, '_'), v]);
+    const params = getParams(req.body, 'p-', ([k, v]) => [k.replace(/-/g, '_'), v]);  // filter 'p-', to env seperator
     const log = getTaskLogger(taskId, req.method);
 
     if (!taskId)
@@ -270,26 +270,6 @@ function getParams(body, prefix, mapping = null){
         .map(mapping)
     );
 }
-
-/*
-// The function is the utility used by generating cmd
-function toEnvString(params, trailing_space=false){
-    const suf = trailing_space? " ": "";
-    const sep = trailing_space? "": " ";
-    return Object.entries(params)
-        .map(([k, v]) => `"${k.replace(/-/g, '_')}=${v}"${suf}`) // trailing space
-        .join(sep);
-}
-*/
-
-/*
-// The function is the utility used by generating cmd
-function toDockerEnv(params){
-    return Object.entries(params)
-        .map(([k, v]) => `-e "${k.replace(/-/g, '_')}=${v}"`)
-        .join(' ');
-}
-*/
 
 function mkdirp(dirpath){
     if(!fs.existsSync(dirpath))
