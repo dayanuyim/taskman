@@ -24,7 +24,7 @@ if ! (git diff --exit-code && git diff --cached --exit-code ) &> /dev/null; then
     exit 2
 fi
 
-if ! git push -n |& grep -q 'update-to-date'; then
+if ! git push -n |& grep -q 'up-to-date'; then
     >&2 echo "error: you have unpushed code"
     exit 3
 fi
