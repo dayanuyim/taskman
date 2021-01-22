@@ -16,6 +16,7 @@ const moment = require('moment-timezone');
 const pkg = require('./package.json');
 const utils = require('./utils');
 
+// =============== utils ========================
 function pretty(obj){ return JSON.stringify(obj, null, 2);}
 
 function toAbs(p){
@@ -29,18 +30,27 @@ function getTaskLogger(taskId='', method=''){
         return moment().tz(tz).format(fmt);
     }
 
+    if(taskId) taskId = `[${taskId}]`;
+    if(method) method = `[${method}]`;
+
     const {blue: b, green: g, yellow: y, red: r} = colors;
     return {
-        debug: (tag, msg) => console.log(`[${now()}][${taskId}][${method}] ${b(tag)} ${msg}`),
-        info:  (tag, msg) => console.log(`[${now()}][${taskId}][${method}] ${g(tag)} ${msg}`),
-        warn:  (tag, msg) => console.log(`[${now()}][${taskId}][${method}] ${y(tag)} ${msg}`),
-        error: (tag, msg) => console.log(`[${now()}][${taskId}][${method}] ${r(tag)} ${msg}`),
+        debug: (tag, msg) => console.log(`[${now()}]${taskId}${method} ${b(tag)} ${msg}`),
+        info:  (tag, msg) => console.log(`[${now()}]${taskId}${method} ${g(tag)} ${msg}`),
+        warn:  (tag, msg) => console.log(`[${now()}]${taskId}${method} ${y(tag)} ${msg}`),
+        error: (tag, msg) => console.log(`[${now()}]${taskId}${method} ${r(tag)} ${msg}`),
     };
 };
 
-const runningTasks = new Set();
+// =============== common ==================
+function taskExists(id){
+    return fs.existsSync(path.join(taskDirRoot, id));
+}
 
 // =========== init ====================
+
+const runningTasks = new Set();
+
 nconf.argv()
     .env('_')
     .defaults({ conf: `${__dirname}/config.json` })
@@ -78,17 +88,21 @@ const upload = multer({ storage: multer.diskStorage({
 });
 //*/
 
-const taskpath = nconf.get('task:path');
-
-/*
-app.get(`${taskpath}/status`, (req, res) => {
-    res.status(200).json({status: "hello"});
+app.get(`/status/version`, async (req, res) => {
+    try{
+        const cmd = nconf.get('status:version:cmd')
+        log.info('CMD', cmd);
+        const {stdout, stderr} = await exec(cmd);
+        log.info('CMD', `stdout[${stdout}], stderr[${stderr}]`);
+        res.status(400).json({version: stdout});
+    }
+    catch(e){
+        log.error('CMD', e.stack);
+        res.status(400).json({error: e});
+    }
 });
-*/
 
-function taskExists(id){
-    return fs.existsSync(path.join(taskDirRoot, id));
-}
+const taskpath = nconf.get('task:path');
 
 app.delete(`${taskpath}/:id`, (req, res) => {
     const log = getTaskLogger(req.params.id, req.method);
@@ -101,10 +115,11 @@ app.delete(`${taskpath}/:id`, (req, res) => {
     //    return res.status(400).end();
 
     res.status(200).end();
-    deleteTask(req.params.id);
+    deleteTask(req.params.id, log);
 });
 
-async function deleteTask(taskId){
+async function deleteTask(taskId, log)
+{
     const genCmd = ({taskId}) => {
         const cmd = eval('`' + nconf.get('task:delete:cmd') + '`');
         log.info('CMD', cmd);

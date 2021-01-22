@@ -11,6 +11,11 @@
             "cmd": "bash -c 'docker rm -f ufo-cmd-${taskId} || true'"
         }
     },
+    "status": {
+        "version": {
+            "cmd": "dufo version ufo | tr -d '\n'"
+        }
+    },
     "report": {
         "method": "api",
         "sync": {
