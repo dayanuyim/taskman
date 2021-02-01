@@ -3,6 +3,10 @@
 VER="${1#[vV]}"
 IMG="dayanuyimable/taskman:$VER"
 
+DOCK="$(dirname "$(realpath "$0")")"
+HOME="$(dirname "$DOCK")"
+DIST="$DOCK/files/_app_"
+
 function usage {
     images="$(docker images --format '{{.Repository}}:{{.Tag}}' | grep "$IMG" | sort -r | sed 's/^/\t/')"
 
@@ -14,27 +18,34 @@ function usage {
 	EOT
 }
 
+function hash_folder {
+    dir="$1"
+    find "$dir" -type f -print0 | sort -z | xargs -0 sha1sum | sha1sum | awk '{print $1}'
+}
+
+function build_dist {
+    dist="$(realpath "$1")"
+
+    mkdir -p                                                          "${dist:?}"
+    rm -rf                                                            "${dist:?No dist folder specified}"/*
+    cd "$HOME" || exit 1
+    cp package.json package-lock.json nodemon.json server.js utils.js "${dist}"
+    cd -
+}
+
 if [[ -z "$VER" ]]; then
     usage
     exit 1
 fi
 
-if ! (git diff --exit-code && git diff --cached --exit-code ) &> /dev/null; then
-    >&2 echo "error: you have uncommit code"
-    exit 2
-fi
-
-if ! git push -n |& grep -q 'up-to-date'; then
-    >&2 echo "error: you have unpushed code"
-    exit 3
-fi
-
-docker build \
-    --build-arg "GIT_HASH=$(git log --format="%h" -n1)" \
+build_dist "$DIST" || exit 1
+if docker build \
+    --build-arg "APP_HASH=$(hash_folder "$DIST")" \
     --build-arg "APP_HOME=/root/taskman" \
     -t "$IMG" .
-
-read -r -p "==> push image $IMG? [Y/n] " ans
-if ! [[ $ans == [Nn]* ]]; then
-    docker push "$IMG"
+then
+    read -r -p "==> push image $IMG? [Y/n] " ans
+    if ! [[ $ans == [Nn]* ]]; then
+        docker push "$IMG"
+    fi
 fi

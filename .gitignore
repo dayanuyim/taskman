@@ -1,7 +1,7 @@
 ### App ###
 tasks/
-tasks-incoming/
 config.json
+docker/files/_app_/
 
 # Created by https://www.gitignore.io/api/vim,node
 

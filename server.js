@@ -94,7 +94,7 @@ app.get(`/status/version`, async (req, res) => {
         log.info('CMD', cmd);
         const {stdout, stderr} = await exec(cmd);
         log.info('CMD', `stdout[${stdout}], stderr[${stderr}]`);
-        res.status(400).json({version: stdout});
+        res.status(200).json({version: stdout});
     }
     catch(e){
         log.error('CMD', e.stack);
