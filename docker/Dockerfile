@@ -24,6 +24,8 @@ RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 RUN apt-get update && apt-get install -y \
         nodejs git docker-compose
 
+RUN wget https://github.com/mikefarah/yq/releases/download/v4.4.0/yq_linux_amd64 -O /usr/bin/yq && chmod +x /usr/bin/yq
+
 # main app =========================================
 
 ARG APP_HOME
